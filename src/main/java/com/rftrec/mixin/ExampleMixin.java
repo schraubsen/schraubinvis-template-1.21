@@ -1,4 +1,4 @@
-package net.kaupenjoe.schraubinvis.mixin;
+package com.rftrec.mixin;
 
 import net.minecraft.server.MinecraftServer;
 import org.spongepowered.asm.mixin.Mixin;

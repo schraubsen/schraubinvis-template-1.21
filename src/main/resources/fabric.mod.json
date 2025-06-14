@@ -1,40 +1,19 @@
 {
-	"schemaVersion": 1,
-	"id": "schraubinvis",
-	"version": "${version}",
-	"name": "schraubINVIS",
-	"description": "InjectCLIENT - v1",
-	"authors": [
-		"SCHRAUBI!"
-	],
-	"contact": {
-		"homepage": "https://kaupenjoe.net",
-		"sources": "https://github.com/Tutorials-By-Kaupenjoe/Fabric-Tutorial-1.21.X"
-	},
-	"license": "MIT",
-	"icon": "assets/schraubinvis/icon.png",
-	"environment": "*",
-	"entrypoints": {
-		"main": [
-			"net.kaupenjoe.schraubinvis.SchraubINVIS"
-		],
-		"fabric-datagen": [
-			"net.kaupenjoe.schraubinvis.SchraubINVISDataGenerator"
-		],
-		"client": [
-			"net.kaupenjoe.schraubinvis.SchraubINVISClient"
-		]
-	},
-	"mixins": [
-		"schraubinvis.mixins.json"
-	],
-	"depends": {
-		"fabricloader": ">=0.16.14",
-		"minecraft": "~1.21",
-		"java": ">=21",
-		"fabric-api": "*"
-	},
-	"suggests": {
-		"another-mod": "*"
-	}
+  "schemaVersion": 1,
+  "id": "rftrec",
+  "version": "${version}",
+  "name": "RFTrec",
+  "description": "Ein PvP Client im Stil von LabyMod / Lunar",
+  "authors": ["schraubsen"],
+  "license": "MIT",
+  "icon": "assets/rftrec/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": ["com.rftrec.RFTrecClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "fabric": "*",
+    "minecraft": "1.21.5"
+  }
 }
