@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KORG ESX/EMX-1 Web Editor</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="theme-esx">
+    <div class="app-shell">
+      <header class="topbar panel hardware">
+        <div>
+          <p class="brand">KORG ELECTRIBE</p>
+          <h1>ESX / EMX Pattern Editor</h1>
+          <p class="subtitle">Mehr Funktionen: Accent-Steps, Pattern-Längen, Undo/Redo, Audio-Preview</p>
+        </div>
+        <div class="transport">
+          <div class="led-display" id="ledDisplay">A.01 | 128 BPM | STOP</div>
+          <button id="playBtn" class="btn btn-green">▶ PLAY</button>
+          <button id="stopBtn" class="btn">■ STOP</button>
+          <button id="tapBtn" class="btn btn-blue">TAP</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel machine-status">
+          <h2>Machine</h2>
+          <div class="status-grid">
+            <label>Model
+              <select id="modelSelect">
+                <option value="esx">ESX-1 (Sampler)</option>
+                <option value="emx">EMX-1 (Synth)</option>
+              </select>
+            </label>
+            <label>Pattern
+              <input id="patternName" value="A.01 Detroit Bounce" />
+            </label>
+            <label>BPM
+              <input id="bpmInput" type="number" min="40" max="240" value="128" />
+            </label>
+            <label>Swing
+              <input id="swingInput" type="range" min="0" max="100" value="12" />
+            </label>
+            <label>Pattern Length
+              <select id="patternLength">
+                <option value="16">16</option>
+                <option value="32">32</option>
+                <option value="64">64</option>
+              </select>
+            </label>
+            <label>Step Page
+              <select id="pageSelect"></select>
+            </label>
+          </div>
+          <div class="actions-row">
+            <button id="newPatternBtn" class="btn">New Pattern</button>
+            <button id="randomizeBtn" class="btn btn-orange">Randomize</button>
+            <button id="copyBarBtn" class="btn">Copy 1→2</button>
+            <button id="undoBtn" class="btn">Undo</button>
+            <button id="redoBtn" class="btn">Redo</button>
+          </div>
+        </section>
+
+        <section class="panel design-section">
+          <h2>Design</h2>
+          <div class="status-grid">
+            <label>Theme
+              <select id="themeSelect">
+                <option value="theme-esx">ESX Red</option>
+                <option value="theme-emx">EMX Blue</option>
+                <option value="theme-night">Night Studio</option>
+              </select>
+            </label>
+            <label>Master Volume
+              <input id="masterVolume" type="range" min="0" max="100" value="72" />
+            </label>
+          </div>
+          <p class="legend">Step-Bedienung: Click = On/Off · Right-Click = Accent · Shift+Click = Ghost</p>
+        </section>
+
+        <section class="panel step-section">
+          <h2>Step Sequencer</h2>
+          <div class="part-tabs" id="partTabs"></div>
+          <div id="stepGrid" class="step-grid"></div>
+          <div class="sequencer-tools">
+            <button class="btn" data-fill="offbeat">Offbeat</button>
+            <button class="btn" data-fill="four">4 on floor</button>
+            <button class="btn" data-fill="clear">Clear</button>
+          </div>
+        </section>
+
+        <section class="panel mixer-section">
+          <h2>Mixer / Part Parameters</h2>
+          <div class="mixer" id="mixer"></div>
+        </section>
+
+        <section class="panel motion-section">
+          <h2>Motion Sequence</h2>
+          <div class="motion-grid">
+            <label>Filter Cutoff<input type="range" id="cutoff" min="0" max="127" value="78" /></label>
+            <label>Resonance<input type="range" id="resonance" min="0" max="127" value="35" /></label>
+            <label>EG Intensity<input type="range" id="eg" min="0" max="127" value="49" /></label>
+            <label>Decay<input type="range" id="decay" min="0" max="127" value="72" /></label>
+            <label>Pan<input type="range" id="pan" min="-64" max="63" value="0" /></label>
+            <label>Roll Type
+              <select id="rollType">
+                <option>Off</option>
+                <option>1/8</option>
+                <option>1/16</option>
+                <option>1/32</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel storage-section">
+          <h2>Pattern Manager</h2>
+          <div class="storage-actions">
+            <button id="saveLocalBtn" class="btn btn-green">Save Local</button>
+            <button id="loadLocalBtn" class="btn">Load Local</button>
+            <button id="exportBtn" class="btn btn-blue">Export JSON</button>
+            <label class="btn file-btn">Import JSON<input id="importInput" type="file" accept="application/json" /></label>
+          </div>
+          <textarea id="jsonPreview" rows="6" readonly></textarea>
+        </section>
+      </main>
+    </div>
+
+    <template id="mixerChannelTemplate">
+      <div class="channel">
+        <h3></h3>
+        <label>Level<input type="range" min="0" max="127" data-param="level" /></label>
+        <label>Pitch<input type="range" min="-24" max="24" data-param="pitch" /></label>
+        <label>Pan<input type="range" min="-64" max="63" data-param="pan" /></label>
+        <label>FX Send<input type="range" min="0" max="127" data-param="fx" /></label>
+        <div class="channel-actions">
+          <button class="btn small" data-action="mute">MUTE</button>
+          <button class="btn small" data-action="solo">SOLO</button>
+          <button class="btn small" data-action="audition">HIT</button>
+        </div>
+      </div>
+    </template>
+
+    <script src="script.js"></script>
+  </body>
+</html>
