@@ -13,7 +13,7 @@ src/main/java/com/rftrec/
   framework/             - basic module system
 ```
 
-The project is configured via Gradle and uses Fabric API `0.95.3+1.21`.
+The project is configured via Gradle for Minecraft `1.21.5`, Fabric Loom `1.10.5` and Fabric API `0.119.5+1.21.5`.
 
 ## KORG ESX/EMX-1 Web Editor
 
