@@ -54,8 +54,8 @@ test("supports 128 steps, per-part switches and accent lanes", async ({ page }) 
 
   await page.locator('.part-tab[data-part-id="ACC"]').click();
   await page.locator(".step").first().click();
-  await expect(page.locator("#jsonPreview")).toContainText('"schemaVersion": 2');
-  await expect(page.locator("#jsonPreview")).toContainText('"machineName": "DETROIT"');
+  await expect(page.locator("#jsonPreview")).toHaveValue(/"schemaVersion": 2/);
+  await expect(page.locator("#jsonPreview")).toHaveValue(/"machineName": "DETROIT"/);
 });
 
 test("local save and load restore a pattern", async ({ page }) => {
