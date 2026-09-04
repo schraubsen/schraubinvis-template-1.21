@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Browserbasierter Pattern-Designer mit WebAudio-Vorschau für KORG ESX-1 und EMX-1 Workflows." />
+    <title>KORG ESX/EMX-1 Web Editor</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="theme-esx" data-model="esx">
+    <div class="app-shell">
+      <header class="topbar panel hardware">
+        <div>
+          <p class="brand">KORG ELECTRIBE</p>
+          <h1>ESX / EMX Pattern Editor</h1>
+          <p class="subtitle">Pattern-Design, wirksame Audio-Preview, sicherer JSON-Workflow</p>
+        </div>
+        <div class="transport">
+          <div class="led-display" id="ledDisplay" aria-live="polite">A.01 | 128 BPM | STOP</div>
+          <button id="playBtn" class="btn btn-green" type="button">▶ PLAY</button>
+          <button id="stopBtn" class="btn" type="button">■ STOP</button>
+          <button id="tapBtn" class="btn btn-blue" type="button">TAP</button>
+        </div>
+      </header>
+
+      <p id="statusMessage" class="status-message" role="status" aria-live="polite"></p>
+
+      <main class="layout">
+        <section class="panel machine-status">
+          <h2>Machine</h2>
+          <div class="status-grid">
+            <label>Model
+              <select id="modelSelect">
+                <option value="esx">ESX-1 (Sampler)</option>
+                <option value="emx">EMX-1 (Synth)</option>
+              </select>
+            </label>
+            <label>Pattern
+              <input id="patternName" value="A.01 Detroit Bounce" maxlength="80" />
+            </label>
+            <label>Korg Name (8 Zeichen)
+              <input id="machineName" value="DETROIT" maxlength="8" pattern="[A-Z0-9_-]{1,8}" required />
+            </label>
+            <label>BPM
+              <input id="bpmInput" type="number" min="40" max="240" value="128" required />
+            </label>
+            <label>Swing <output id="swingValue">50</output>
+              <input id="swingInput" type="range" min="50" max="75" value="50" />
+            </label>
+            <label>Pattern Length
+              <select id="patternLength">
+                <option value="16">16</option>
+                <option value="32">32</option>
+                <option value="48">48</option>
+                <option value="64">64</option>
+                <option value="80">80</option>
+                <option value="96">96</option>
+                <option value="112">112</option>
+                <option value="128">128</option>
+              </select>
+            </label>
+            <label>Step Page
+              <select id="pageSelect"></select>
+            </label>
+          </div>
+          <div class="actions-row">
+            <button id="newPatternBtn" class="btn" type="button">New Pattern</button>
+            <button id="randomizeBtn" class="btn btn-orange" type="button">Randomize</button>
+            <button id="copyBarBtn" class="btn" type="button">Copy 1→2</button>
+            <button id="undoBtn" class="btn" type="button">Undo</button>
+            <button id="redoBtn" class="btn" type="button">Redo</button>
+          </div>
+        </section>
+
+        <section class="panel design-section">
+          <h2>Design</h2>
+          <div class="status-grid">
+            <label>Theme
+              <select id="themeSelect">
+                <option value="theme-esx">ESX Red</option>
+                <option value="theme-emx">EMX Blue</option>
+                <option value="theme-night">Night Studio</option>
+              </select>
+            </label>
+            <label>Master Volume
+              <input id="masterVolume" type="range" min="0" max="100" value="72" />
+            </label>
+          </div>
+          <p class="legend">Click = On/Off · Rechtsklick = Accent-Lane · Shift+Click = Ghost · Swing/Accent/Roll gelten pro Part</p>
+          <p class="scope-note">Preview- und Pattern-Designer; noch kein direkter Export ins proprietäre .esx/.emx-Dateiformat.</p>
+        </section>
+
+        <section class="panel step-section">
+          <h2>Step Sequencer</h2>
+          <div class="part-tabs" id="partTabs"></div>
+          <div class="step-scroll"><div id="stepGrid" class="step-grid"></div></div>
+          <div class="sequencer-tools">
+            <button class="btn" type="button" data-fill="offbeat">Offbeat</button>
+            <button class="btn" type="button" data-fill="four">4 on floor</button>
+            <button class="btn" type="button" data-fill="clear">Clear</button>
+          </div>
+        </section>
+
+        <section class="panel mixer-section">
+          <h2>Mixer / Part Parameters</h2>
+          <div class="mixer" id="mixer"></div>
+        </section>
+
+        <section class="panel motion-section">
+          <h2>Motion / Preview Engine</h2>
+          <div class="motion-grid">
+            <label>Filter Cutoff<input type="range" id="cutoff" min="0" max="127" value="78" /></label>
+            <label>Resonance<input type="range" id="resonance" min="0" max="127" value="35" /></label>
+            <label>EG Intensity<input type="range" id="eg" min="0" max="127" value="49" /></label>
+            <label>Decay<input type="range" id="decay" min="0" max="127" value="72" /></label>
+            <label>Pan<input type="range" id="pan" min="-64" max="63" value="0" /></label>
+            <label>Roll Type
+              <select id="rollType">
+                <option value="2">2 Hits pro Step</option>
+                <option value="3">3 Hits pro Step</option>
+                <option value="4">4 Hits pro Step</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel storage-section">
+          <h2>Pattern Manager</h2>
+          <div class="storage-actions">
+            <button id="saveLocalBtn" class="btn btn-green" type="button">Save Local</button>
+            <button id="loadLocalBtn" class="btn" type="button">Load Local</button>
+            <button id="exportBtn" class="btn btn-blue" type="button">Export JSON</button>
+            <label class="btn file-btn">Import JSON<input id="importInput" type="file" accept="application/json,.json" /></label>
+          </div>
+          <textarea id="jsonPreview" rows="6" readonly aria-label="Aktueller Pattern-JSON-Stand"></textarea>
+        </section>
+      </main>
+    </div>
+
+    <template id="mixerChannelTemplate">
+      <div class="channel">
+        <h3></h3>
+        <label data-control="level">Level<input type="range" min="0" max="127" data-param="level" /></label>
+        <label data-non-accent>Pitch<input type="range" min="-24" max="24" data-param="pitch" /></label>
+        <label data-non-accent>Pan<input type="range" min="-64" max="63" data-param="pan" /></label>
+        <label data-non-accent>FX Send<input type="range" min="0" max="127" data-param="fx" /></label>
+        <div class="channel-actions" data-non-accent>
+          <button class="btn small" type="button" data-action="mute">MUTE</button>
+          <button class="btn small" type="button" data-action="solo">SOLO</button>
+          <button class="btn small" type="button" data-action="audition">HIT</button>
+        </div>
+        <div class="channel-actions" data-non-accent>
+          <button class="btn small" type="button" data-action="swing">SWING</button>
+          <button class="btn small" type="button" data-action="roll">ROLL</button>
+          <button class="btn small" type="button" data-action="accent">ACCENT</button>
+        </div>
+      </div>
+    </template>
+
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
