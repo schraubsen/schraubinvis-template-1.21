@@ -1,12 +1,15 @@
 import {
-  PARTS,
+  changeModel,
   createDefaultState,
-  createPatternSteps,
   createStep,
+  createTracks,
+  getAccentTrack,
+  getPartDefinitions,
   getStepDurationMs,
   nextStepIndex,
   parsePattern,
   randomStep,
+  resizePattern,
   safeFilename,
   validatePattern
 } from "./editor-core.js";
@@ -32,6 +35,14 @@ let tapTimes = [];
 let audioCtx = null;
 const undoStack = [];
 const redoStack = [];
+
+function getSelectedTrack() {
+  return state.tracks.find((track) => track.id === state.selectedPartId);
+}
+
+function getSelectedDefinition() {
+  return getPartDefinitions(state.model).find((definition) => definition.id === state.selectedPartId);
+}
 
 function setStatus(message, type = "info") {
   refs.status.textContent = message;
@@ -91,17 +102,17 @@ async function ensureAudio() {
   if (audioCtx.state === "suspended") await audioCtx.resume();
 }
 
-function playVoice(partIdx, stepData = { on: true, accent: false, ghost: false }, when = audioCtx.currentTime) {
-  const channel = state.mixer[partIdx];
+function playVoice(partIdx, track, stepData = { on: true, ghost: false }, accented = false, accentLevel = 0, when = audioCtx.currentTime) {
   const baseFrequencies = [58, 185, 520, 235, 310, 345, 460, 92, 730, 155];
-  const pitchRatio = 2 ** (channel.pitch / 12);
-  const baseFrequency = baseFrequencies[partIdx] * pitchRatio;
+  const pitchRatio = 2 ** (track.pitch / 12);
+  const baseFrequency = (baseFrequencies[partIdx % baseFrequencies.length] ?? 220) * pitchRatio;
   const cutoff = 80 * (150 ** (state.motion.cutoff / 127));
   const decay = 0.035 + (state.motion.decay / 127) * 0.32;
-  const level = (state.masterVolume / 100) * (channel.level / 127);
-  const velocity = stepData.ghost ? 0.42 : stepData.accent ? 1.3 : 0.82;
-  const repeatCount = { Off: 1, "1/8": 2, "1/16": 3, "1/32": 4 }[state.motion.rollType] ?? 1;
-  const stepSeconds = getStepDurationMs(state.bpm, state.swing, currentStep) / 1000;
+  const level = (state.masterVolume / 100) * (track.level / 127);
+  const accentBoost = 1 + (accentLevel / 127) * 0.6;
+  const velocity = stepData.ghost ? 0.42 : accented ? 0.82 * accentBoost : 0.82;
+  const repeatCount = track.rollEnabled ? state.rollType : 1;
+  const stepSeconds = getStepDurationMs(state.bpm, state.swing, currentStep, track.swingEnabled) / 1000;
 
   for (let repeat = 0; repeat < repeatCount; repeat++) {
     const startAt = when + repeat * (stepSeconds / repeatCount);
@@ -123,13 +134,13 @@ function playVoice(partIdx, stepData = { on: true, accent: false, ghost: false }
     filter.frequency.setValueAtTime(Math.min(18_000, cutoff * (0.75 + state.motion.eg / 127)), startAt);
     filter.frequency.exponentialRampToValueAtTime(Math.max(80, cutoff * 0.42), startAt + decay);
 
-    const combinedPan = Math.max(-1, Math.min(1, (channel.pan + state.motion.pan) / 64));
+    const combinedPan = Math.max(-1, Math.min(1, (track.pan + state.motion.pan) / 64));
     panner.pan.value = combinedPan;
     const amplitude = Math.max(0.0001, Math.min(0.22, level * velocity * 0.13 / Math.sqrt(repeatCount)));
     dryGain.gain.setValueAtTime(amplitude, startAt);
     dryGain.gain.exponentialRampToValueAtTime(0.0001, startAt + decay);
     delay.delayTime.value = Math.min(0.35, stepSeconds * 1.5);
-    wetGain.gain.value = (channel.fx / 127) * 0.24;
+    wetGain.gain.value = (track.fx / 127) * 0.24;
 
     oscillator.connect(filter);
     filter.connect(panner);
@@ -140,23 +151,33 @@ function playVoice(partIdx, stepData = { on: true, accent: false, ghost: false }
   }
 }
 
+function getSwingDelaySeconds(track, stepIndex) {
+  if (!track.swingEnabled || stepIndex % 2 === 0) return 0;
+  const straightSeconds = (60 / state.bpm) / 4;
+  return 2 * straightSeconds * (state.swing / 100 - 0.5);
+}
+
 async function audition(partIdx) {
   await ensureAudio();
-  playVoice(partIdx, { on: true, accent: true, ghost: false });
+  const track = state.tracks[partIdx];
+  const accentTrack = getAccentTrack(state, track.id);
+  playVoice(partIdx, track, { on: true, ghost: false }, true, accentTrack?.level ?? 0);
 }
 
 function renderPartTabs() {
   refs.partTabs.replaceChildren();
-  PARTS.forEach((name, idx) => {
+  getPartDefinitions(state.model).forEach((definition) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `part-tab ${idx === state.selectedPart ? "active" : ""}`;
-    button.textContent = name;
-    button.setAttribute("aria-pressed", String(idx === state.selectedPart));
+    button.className = `part-tab ${definition.id === state.selectedPartId ? "active" : ""} ${definition.kind === "accent" ? "accent-part" : ""}`;
+    button.textContent = definition.name;
+    button.dataset.partId = definition.id;
+    button.setAttribute("aria-pressed", String(definition.id === state.selectedPartId));
     button.onclick = () => {
-      state.selectedPart = idx;
+      state.selectedPartId = definition.id;
       renderPartTabs();
       renderSteps();
+      refreshJSONPreview();
     };
     refs.partTabs.appendChild(button);
   });
@@ -164,25 +185,28 @@ function renderPartTabs() {
 
 function renderSteps() {
   refs.stepGrid.replaceChildren();
+  const track = getSelectedTrack();
+  const definition = getSelectedDefinition();
+  const accentTrack = getAccentTrack(state, track.id);
   for (let localIndex = 0; localIndex < 16; localIndex++) {
     const globalIndex = getGlobalStepIndex(localIndex);
-    const stepData = state.steps[state.selectedPart][globalIndex];
+    const stepData = track.steps[globalIndex];
+    const accented = definition.kind !== "accent" && track.accentEnabled && accentTrack?.steps[globalIndex].on;
     const button = document.createElement("button");
     const marker = document.createElement("small");
     button.type = "button";
-    button.className = `step ${stepData.on ? "on" : ""} ${stepData.accent ? "accent" : ""} ${stepData.ghost ? "ghost" : ""} ${globalIndex === currentStep ? "current" : ""}`;
+    button.className = `step ${stepData.on ? "on" : ""} ${accented ? "accent" : ""} ${stepData.ghost ? "ghost" : ""} ${definition.kind === "accent" ? "accent-lane" : ""} ${globalIndex === currentStep ? "current" : ""}`;
     button.dataset.step = String(globalIndex);
     button.textContent = String(localIndex + 1);
-    button.setAttribute("aria-label", `Step ${globalIndex + 1}: ${stepData.on ? stepData.accent ? "Accent" : stepData.ghost ? "Ghost" : "An" : "Aus"}`);
-    marker.textContent = stepData.accent ? "ACC" : stepData.ghost ? "GST" : "";
+    button.setAttribute("aria-label", `${definition.name} Step ${globalIndex + 1}: ${stepData.on ? definition.kind === "accent" || accented ? "Accent" : stepData.ghost ? "Ghost" : "An" : "Aus"}`);
+    marker.textContent = definition.kind === "accent" && stepData.on ? "ACC" : accented ? "ACC" : stepData.ghost ? "GST" : "";
     button.appendChild(marker);
 
     button.onclick = (event) => {
       snapshot();
-      if (event.shiftKey) {
+      if (event.shiftKey && definition.kind !== "accent") {
         stepData.ghost = !stepData.ghost;
         stepData.on = stepData.on || stepData.ghost;
-        if (stepData.ghost) stepData.accent = false;
       } else {
         stepData.on = !stepData.on;
         if (!stepData.on) Object.assign(stepData, createStep());
@@ -193,10 +217,11 @@ function renderSteps() {
 
     button.oncontextmenu = (event) => {
       event.preventDefault();
+      if (definition.kind === "accent" || !accentTrack) return;
       snapshot();
       stepData.on = true;
-      stepData.accent = !stepData.accent;
-      if (stepData.accent) stepData.ghost = false;
+      stepData.ghost = false;
+      accentTrack.steps[globalIndex].on = !accentTrack.steps[globalIndex].on;
       renderSteps();
       refreshJSONPreview();
     };
@@ -214,36 +239,49 @@ function historyOnControl(control) {
 function renderMixer() {
   const template = document.getElementById("mixerChannelTemplate");
   refs.mixer.replaceChildren();
-  PARTS.forEach((name, idx) => {
+  getPartDefinitions(state.model).forEach((definition, idx) => {
     const node = template.content.firstElementChild.cloneNode(true);
-    const channel = state.mixer[idx];
-    node.querySelector("h3").textContent = name;
-    node.classList.toggle("muted", channel.mute);
-    node.classList.toggle("solo", channel.solo);
+    const track = state.tracks[idx];
+    const accent = definition.kind === "accent";
+    node.dataset.partId = definition.id;
+    node.querySelector("h3").textContent = definition.name;
+    node.classList.toggle("muted", track.mute);
+    node.classList.toggle("solo", track.solo);
+    node.classList.toggle("accent-channel", accent);
+    node.querySelectorAll("[data-non-accent]").forEach((element) => { element.hidden = accent; });
+    const levelLabel = node.querySelector('[data-control="level"]');
+    if (accent) levelLabel.firstChild.textContent = "Accent Level";
 
     node.querySelectorAll("[data-param]").forEach((input) => {
       const key = input.dataset.param;
-      input.value = channel[key];
+      input.value = track[key];
       historyOnControl(input);
       input.oninput = () => {
-        channel[key] = Number(input.value);
+        track[key] = Number(input.value);
         refreshJSONPreview();
       };
     });
 
-    node.querySelector('[data-action="mute"]').onclick = () => {
-      snapshot();
-      channel.mute = !channel.mute;
-      renderMixer();
-      refreshJSONPreview();
+    const bindToggle = (action, key) => {
+      const button = node.querySelector(`[data-action="${action}"]`);
+      if (!button) return;
+      button.classList.toggle("active", track[key]);
+      button.setAttribute("aria-pressed", String(track[key]));
+      button.onclick = () => {
+        snapshot();
+        track[key] = !track[key];
+        renderMixer();
+        if (key === "accentEnabled") renderSteps();
+        refreshJSONPreview();
+      };
     };
-    node.querySelector('[data-action="solo"]').onclick = () => {
-      snapshot();
-      channel.solo = !channel.solo;
-      renderMixer();
-      refreshJSONPreview();
-    };
-    node.querySelector('[data-action="audition"]').onclick = () => audition(idx);
+    bindToggle("mute", "mute");
+    bindToggle("solo", "solo");
+    bindToggle("swing", "swingEnabled");
+    bindToggle("roll", "rollEnabled");
+    bindToggle("accent", "accentEnabled");
+    const auditionButton = node.querySelector('[data-action="audition"]');
+    if (auditionButton) auditionButton.onclick = () => audition(idx);
     refs.mixer.appendChild(node);
   });
 }
@@ -254,12 +292,17 @@ function refreshJSONPreview() {
 }
 
 function playCurrentStep() {
-  const soloActive = state.mixer.some((channel) => channel.solo);
-  state.steps.forEach((partSteps, partIdx) => {
-    const channel = state.mixer[partIdx];
-    const stepData = partSteps[currentStep];
-    if (!stepData.on || channel.mute || (soloActive && !channel.solo)) return;
-    playVoice(partIdx, stepData);
+  const definitions = getPartDefinitions(state.model);
+  const soloActive = state.tracks.some((track, index) => definitions[index].kind !== "accent" && track.solo);
+  state.tracks.forEach((track, partIdx) => {
+    const definition = definitions[partIdx];
+    if (definition.kind === "accent") return;
+    const stepData = track.steps[currentStep];
+    if (!stepData.on || track.mute || (soloActive && !track.solo)) return;
+    const accentTrack = getAccentTrack(state, track.id);
+    const accented = track.accentEnabled && Boolean(accentTrack?.steps[currentStep].on);
+    const when = audioCtx.currentTime + getSwingDelaySeconds(track, currentStep);
+    playVoice(partIdx, track, stepData, accented, accentTrack?.level ?? 0, when);
   });
   const page = Math.floor(currentStep / 16);
   if (page !== state.currentPage) {
@@ -272,7 +315,7 @@ function playCurrentStep() {
 
 function scheduleNextStep() {
   if (!sequencerTimer) return;
-  const duration = getStepDurationMs(state.bpm, state.swing, currentStep);
+  const duration = getStepDurationMs(state.bpm, 50, currentStep, false);
   nextStepAt += duration;
   sequencerTimer = setTimeout(() => {
     currentStep = nextStepIndex(currentStep, state.patternLength);
@@ -309,11 +352,13 @@ function retimeSequencer() {
 function fillPattern(type) {
   snapshot();
   const base = state.currentPage * 16;
-  const part = state.steps[state.selectedPart];
+  const track = getSelectedTrack();
+  const accent = getSelectedDefinition().kind === "accent";
   for (let index = 0; index < 16; index++) {
-    if (type === "offbeat") part[base + index] = { on: index % 2 === 1, accent: false, ghost: false };
-    else if (type === "four") part[base + index] = { on: index % 4 === 0, accent: index % 8 === 0, ghost: false };
-    else part[base + index] = createStep();
+    if (type === "offbeat") track.steps[base + index] = { on: index % 2 === 1, ghost: false };
+    else if (type === "four") track.steps[base + index] = { on: index % 4 === 0, ghost: false };
+    else track.steps[base + index] = createStep();
+    if (accent) track.steps[base + index].ghost = false;
   }
   renderSteps();
   refreshJSONPreview();
@@ -321,19 +366,26 @@ function fillPattern(type) {
 
 function randomizePattern() {
   snapshot();
-  state.steps = state.steps.map((part) => part.map(() => randomStep()));
+  const definitions = getPartDefinitions(state.model);
+  state.tracks = state.tracks.map((track, index) => ({
+    ...track,
+    steps: track.steps.map(() => definitions[index].kind === "accent"
+      ? { on: Math.random() > 0.82, ghost: false }
+      : randomStep())
+  }));
+  renderMixer();
   renderSteps();
   refreshJSONPreview();
 }
 
 function copyBar() {
   if (state.patternLength < 32) {
-    setStatus("Für Page Copy zuerst 32 oder 64 Steps wählen.", "warning");
+    setStatus("Für Page Copy mindestens 32 Steps wählen.", "warning");
     return;
   }
   snapshot();
-  const part = state.steps[state.selectedPart];
-  for (let index = 0; index < 16; index++) part[index + 16] = { ...part[index] };
+  const track = getSelectedTrack();
+  for (let index = 0; index < 16; index++) track.steps[index + 16] = { ...track.steps[index] };
   renderSteps();
   refreshJSONPreview();
   setStatus("Page 1 wurde auf Page 2 kopiert.", "success");
@@ -354,16 +406,10 @@ function setPatternLength(length) {
   const nextLength = Number(length);
   if (nextLength === state.patternLength) return;
   snapshot();
-  state.steps = state.steps.map((part) => {
-    const clone = part.map((step) => ({ ...step }));
-    while (clone.length < nextLength) clone.push(createStep());
-    clone.length = nextLength;
-    return clone;
-  });
-  state.patternLength = nextLength;
-  state.currentPage = Math.min(state.currentPage, nextLength / 16 - 1);
+  resizePattern(state, nextLength);
   currentStep = state.currentPage * 16;
   updatePageSelect();
+  renderMixer();
   renderSteps();
   refreshJSONPreview();
 }
@@ -406,11 +452,13 @@ function loadLocal() {
 }
 
 function exportJSON() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const checked = validatePattern(state);
+  Object.assign(state, checked);
+  const blob = new Blob([JSON.stringify(checked, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${safeFilename(state.patternName)}.json`;
+  anchor.download = `${state.machineName}_${safeFilename(state.patternName)}.json`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
   setStatus("Geprüftes Pattern als JSON exportiert.", "success");
@@ -441,10 +489,13 @@ function syncInputs() {
   document.getElementById("modelSelect").value = state.model;
   document.getElementById("themeSelect").value = state.theme;
   document.getElementById("patternName").value = state.patternName;
+  document.getElementById("machineName").value = state.machineName;
   document.getElementById("bpmInput").value = String(state.bpm);
   document.getElementById("swingInput").value = String(state.swing);
+  document.getElementById("swingValue").textContent = String(state.swing);
   document.getElementById("patternLength").value = String(state.patternLength);
   document.getElementById("masterVolume").value = String(state.masterVolume);
+  document.getElementById("rollType").value = String(state.rollType);
   Object.entries(state.motion).forEach(([key, value]) => {
     const element = document.getElementById(key);
     if (element) element.value = String(value);
@@ -463,16 +514,40 @@ function bindEvents() {
   const model = document.getElementById("modelSelect");
   const theme = document.getElementById("themeSelect");
   const patternName = document.getElementById("patternName");
+  const machineName = document.getElementById("machineName");
   const bpm = document.getElementById("bpmInput");
   const swing = document.getElementById("swingInput");
   const master = document.getElementById("masterVolume");
 
-  model.onchange = (event) => { snapshot(); setModel(event.target.value); refreshJSONPreview(); };
+  model.onchange = (event) => {
+    snapshot();
+    changeModel(state, event.target.value);
+    setModel(state.model);
+    syncInputs();
+    renderAll();
+    setStatus(`${state.model.toUpperCase()}-Partstruktur geladen. Gemeinsame Parts wurden übernommen.`, "success");
+  };
   theme.onchange = (event) => { snapshot(); applyTheme(event.target.value); refreshJSONPreview(); };
   patternName.onfocus = snapshot;
   patternName.oninput = (event) => {
     state.patternName = event.target.value.slice(0, 80) || "Unbenannt";
     refreshJSONPreview();
+  };
+  machineName.onfocus = snapshot;
+  machineName.oninput = (event) => {
+    const value = event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 8);
+    event.target.value = value;
+    if (value) {
+      state.machineName = value;
+      event.target.setCustomValidity("");
+      refreshJSONPreview();
+    } else {
+      event.target.setCustomValidity("Korg-Name darf nicht leer sein.");
+    }
+  };
+  machineName.onblur = () => {
+    if (!machineName.value) machineName.value = state.machineName;
+    machineName.setCustomValidity("");
   };
   bpm.onfocus = snapshot;
   bpm.oninput = (event) => {
@@ -485,7 +560,11 @@ function bindEvents() {
     } else event.target.setCustomValidity("BPM muss zwischen 40 und 240 liegen.");
   };
   historyOnControl(swing);
-  swing.oninput = (event) => { state.swing = Number(event.target.value); retimeSequencer(); refreshJSONPreview(); };
+  swing.oninput = (event) => {
+    state.swing = Number(event.target.value);
+    document.getElementById("swingValue").textContent = String(state.swing);
+    refreshJSONPreview();
+  };
   document.getElementById("patternLength").onchange = (event) => setPatternLength(event.target.value);
   refs.pageSelect.onchange = (event) => {
     state.currentPage = Number(event.target.value);
@@ -496,15 +575,20 @@ function bindEvents() {
   historyOnControl(master);
   master.oninput = (event) => { state.masterVolume = Number(event.target.value); refreshJSONPreview(); };
 
-  ["cutoff", "resonance", "eg", "decay", "pan", "rollType"].forEach((key) => {
+  ["cutoff", "resonance", "eg", "decay", "pan"].forEach((key) => {
     const control = document.getElementById(key);
-    if (control.type === "range") historyOnControl(control);
-    control.onchange = control.type === "range" ? null : snapshot;
+    historyOnControl(control);
     control.oninput = (event) => {
-      state.motion[key] = key === "rollType" ? event.target.value : Number(event.target.value);
+      state.motion[key] = Number(event.target.value);
       refreshJSONPreview();
     };
   });
+  const rollType = document.getElementById("rollType");
+  rollType.onchange = (event) => {
+    snapshot();
+    state.rollType = Number(event.target.value);
+    refreshJSONPreview();
+  };
 
   document.getElementById("playBtn").onclick = startSequencer;
   document.getElementById("stopBtn").onclick = () => stopSequencer();
@@ -528,8 +612,9 @@ function bindEvents() {
 
   document.getElementById("newPatternBtn").onclick = () => {
     snapshot();
-    state.steps = createPatternSteps(state.patternLength);
-    renderSteps();
+    state.tracks = createTracks(state.model, state.patternLength);
+    state.selectedPartId = state.tracks[0].id;
+    renderAll();
     refreshJSONPreview();
     setStatus("Leeres Pattern angelegt.", "success");
   };

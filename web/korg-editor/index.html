@@ -38,17 +38,25 @@
             <label>Pattern
               <input id="patternName" value="A.01 Detroit Bounce" maxlength="80" />
             </label>
+            <label>Korg Name (8 Zeichen)
+              <input id="machineName" value="DETROIT" maxlength="8" pattern="[A-Z0-9_-]{1,8}" required />
+            </label>
             <label>BPM
               <input id="bpmInput" type="number" min="40" max="240" value="128" required />
             </label>
-            <label>Swing
-              <input id="swingInput" type="range" min="0" max="100" value="12" />
+            <label>Swing <output id="swingValue">50</output>
+              <input id="swingInput" type="range" min="50" max="75" value="50" />
             </label>
             <label>Pattern Length
               <select id="patternLength">
                 <option value="16">16</option>
                 <option value="32">32</option>
+                <option value="48">48</option>
                 <option value="64">64</option>
+                <option value="80">80</option>
+                <option value="96">96</option>
+                <option value="112">112</option>
+                <option value="128">128</option>
               </select>
             </label>
             <label>Step Page
@@ -78,7 +86,7 @@
               <input id="masterVolume" type="range" min="0" max="100" value="72" />
             </label>
           </div>
-          <p class="legend">Click = On/Off · Rechtsklick = Accent · Shift+Click = Ghost</p>
+          <p class="legend">Click = On/Off · Rechtsklick = Accent-Lane · Shift+Click = Ghost · Swing/Accent/Roll gelten pro Part</p>
           <p class="scope-note">Preview- und Pattern-Designer; noch kein direkter Export ins proprietäre .esx/.emx-Dateiformat.</p>
         </section>
 
@@ -108,10 +116,9 @@
             <label>Pan<input type="range" id="pan" min="-64" max="63" value="0" /></label>
             <label>Roll Type
               <select id="rollType">
-                <option>Off</option>
-                <option>1/8</option>
-                <option>1/16</option>
-                <option>1/32</option>
+                <option value="2">2 Hits pro Step</option>
+                <option value="3">3 Hits pro Step</option>
+                <option value="4">4 Hits pro Step</option>
               </select>
             </label>
           </div>
@@ -133,14 +140,19 @@
     <template id="mixerChannelTemplate">
       <div class="channel">
         <h3></h3>
-        <label>Level<input type="range" min="0" max="127" data-param="level" /></label>
-        <label>Pitch<input type="range" min="-24" max="24" data-param="pitch" /></label>
-        <label>Pan<input type="range" min="-64" max="63" data-param="pan" /></label>
-        <label>FX Send<input type="range" min="0" max="127" data-param="fx" /></label>
-        <div class="channel-actions">
+        <label data-control="level">Level<input type="range" min="0" max="127" data-param="level" /></label>
+        <label data-non-accent>Pitch<input type="range" min="-24" max="24" data-param="pitch" /></label>
+        <label data-non-accent>Pan<input type="range" min="-64" max="63" data-param="pan" /></label>
+        <label data-non-accent>FX Send<input type="range" min="0" max="127" data-param="fx" /></label>
+        <div class="channel-actions" data-non-accent>
           <button class="btn small" type="button" data-action="mute">MUTE</button>
           <button class="btn small" type="button" data-action="solo">SOLO</button>
           <button class="btn small" type="button" data-action="audition">HIT</button>
+        </div>
+        <div class="channel-actions" data-non-accent>
+          <button class="btn small" type="button" data-action="swing">SWING</button>
+          <button class="btn small" type="button" data-action="roll">ROLL</button>
+          <button class="btn small" type="button" data-action="accent">ACCENT</button>
         </div>
       </div>
     </template>

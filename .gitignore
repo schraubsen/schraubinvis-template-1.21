@@ -38,3 +38,9 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# web editor
+
+node_modules/
+test-results/
+playwright-report/
